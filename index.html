@@ -66,7 +66,6 @@
         --bs-table-bg: #1e1e1e;
         font-size: 0.85rem;
       }
-      /* Penting agar SweetAlert tampil di atas Modal Bootstrap */
       .swal2-container {
         z-index: 10000 !important;
       }
@@ -268,7 +267,7 @@
                 <textarea id="riwayat" class="form-control" rows="2"></textarea>
               </div>
               <button type="submit" class="btn btn-success w-100 py-2 fw-bold">
-                ENKRIPSI & SIMPAN
+                SIMPAN DATA
               </button>
             </form>
           </div>
@@ -285,8 +284,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
     <script>
+      // Kita gunakan PIN login sebagai dasar key enkripsi agar user tidak perlu input berkali-kali
+      let sessionKey = "";
+
       $(document).ready(function () {
         if (sessionStorage.getItem("vault_auth") === "true") {
+          sessionKey = sessionStorage.getItem("vault_key");
           showApp();
         }
       });
@@ -299,20 +302,22 @@
       async function checkPin() {
         const pin = $("#pinInput").val();
         const hash = CryptoJS.SHA256(pin).toString();
+
         try {
           const res = await fetch("/api/verify-pin", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ pin: hash }),
           });
           if (res.ok) {
+            sessionKey = pin; // Simpan pin asli sebagai key enkripsi sementara
             sessionStorage.setItem("vault_auth", "true");
+            sessionStorage.setItem("vault_key", pin);
             showApp();
           } else {
             Swal.fire("Error", "PIN Salah!", "error");
           }
         } catch (e) {
-          Swal.fire("Error", "Gagal terhubung ke server", "error");
+          Swal.fire("Error", "Gagal verifikasi ke server", "error");
         }
       }
 
@@ -323,13 +328,14 @@
       }
 
       async function askSecret() {
+        // Fungsi ini sekarang hanya digunakan untuk VIEW (melihat password)
         const { value: key } = await Swal.fire({
           title: "Otorisasi",
-          html: `<input id="swal-secret-input" class="swal2-input form-control swal-mini-input" type="password" placeholder="Secret Key">`,
+          html: `<input id="swal2-input" autocapitalize="off" class="swal2-input form-control swal-mini-input" type="password" placeholder="Secret Key">`,
           showCancelButton: true,
           focusConfirm: false,
           preConfirm: () => {
-            const val = document.getElementById("swal-secret-input").value;
+            const val = Swal.getPopup().querySelector("#swal2-input").value;
             if (!val) Swal.showValidationMessage("Masukkan Secret Key");
             return val;
           },
@@ -338,15 +344,14 @@
       }
 
       async function renderTable() {
-        try {
-          const response = await fetch("/api/accounts");
-          const data = await response.json();
-          if ($.fn.DataTable.isDataTable("#accountTable"))
-            $("#accountTable").DataTable().destroy();
+        const response = await fetch("/api/accounts");
+        const data = await response.json();
+        if ($.fn.DataTable.isDataTable("#accountTable"))
+          $("#accountTable").DataTable().destroy();
 
-          let html = "";
-          data.forEach((item) => {
-            html += `<tr>
+        let html = "";
+        data.forEach((item) => {
+          html += `<tr>
                 <td><b>${item.kategori}</b></td>
                 <td>${item.username}</td>
                 <td class="text-end action-col">
@@ -355,37 +360,37 @@
                     <button class="btn btn-sm btn-danger" onclick="handleAction(${item.id}, 'delete')"><i class="fas fa-trash"></i></button>
                 </td>
             </tr>`;
-          });
-          $("#tableBody").html(html);
+        });
+        $("#tableBody").html(html);
 
-          $("#accountTable").DataTable({
-            responsive: true,
-            pageLength: 10,
-            lengthChange: false,
-            language: {
-              search: "_INPUT_",
-              searchPlaceholder: "Cari...",
-              paginate: { previous: "‹", next: "›" },
-            },
-          });
-        } catch (e) {
-          console.error("Fetch error:", e);
-        }
+        $("#accountTable").DataTable({
+          responsive: true,
+          pageLength: 10,
+          lengthChange: false,
+          language: {
+            search: "_INPUT_",
+            searchPlaceholder: "Cari...",
+            paginate: { previous: "‹", next: "›" },
+          },
+        });
       }
 
       async function handleAction(id, type) {
-        const key = await askSecret();
+        // PERBAIKAN: Edit tidak lagi minta Secret Key, langsung pakai sessionKey (PIN Login)
+        // View tetap minta Secret Key untuk keamanan ekstra jika diinginkan
+        let key = type === "view" ? await askSecret() : sessionKey;
         if (!key) return;
 
-        try {
-          const response = await fetch("/api/accounts");
-          const db = await response.json();
-          const item = db.find((x) => x.id === id);
+        const response = await fetch("/api/accounts");
+        const db = await response.json();
+        const item = db.find((x) => x.id === id);
 
+        try {
           if (type === "view" || type === "edit") {
-            const bytes = CryptoJS.AES.decrypt(item.password, key);
-            const pass = bytes.toString(CryptoJS.enc.Utf8);
-            if (!pass) throw new Error("Wrong Key");
+            const pass = CryptoJS.AES.decrypt(item.password, key).toString(
+              CryptoJS.enc.Utf8
+            );
+            if (!pass) throw new Error();
 
             const pin = item.pin
               ? CryptoJS.AES.decrypt(item.pin, key).toString(CryptoJS.enc.Utf8)
@@ -398,9 +403,7 @@
               Swal.fire({
                 title: item.kategori,
                 html: `<div class="text-start bg-light p-3 rounded text-dark small">
-                            <b>Pass:</b> ${pass}<br><b>PIN:</b> ${pin}<br><b>Pola:</b> ${pola}<hr>${
-                  item.riwayat || ""
-                }</div>`,
+                            <b>Pass:</b> ${pass}<br><b>PIN:</b> ${pin}<br><b>Pola:</b> ${pola}<hr>${item.riwayat}</div>`,
               });
             } else {
               $("#editId").val(item.id);
@@ -416,66 +419,54 @@
           } else if (type === "delete") {
             const confirm = await Swal.fire({
               title: "Hapus?",
-              text: "Data akan dihapus permanen",
-              icon: "warning",
               showCancelButton: true,
             });
             if (confirm.isConfirmed) {
               await fetch(`/api/accounts?id=${id}`, { method: "DELETE" });
               renderTable();
-              Swal.fire("Dihapus", "", "success");
             }
           }
         } catch (e) {
-          Swal.fire("Error", "Secret Key Salah atau Data Corrupt!", "error");
+          Swal.fire("Error", "Gagal dekripsi data!", "error");
         }
       }
 
-      // PERBAIKAN UTAMA: Penanganan Submit Form secara Asinkronus
+      // PERBAIKAN: Submit Tambah/Edit TIDAK minta Secret Key lagi
       $("#accountForm").on("submit", async function (e) {
         e.preventDefault();
 
-        // Minta secret key sebelum proses enkripsi
-        const key = await askSecret();
-        if (!key) return;
+        // Langsung gunakan sessionKey (PIN Login) untuk enkripsi
+        const key = sessionKey;
 
-        try {
-          const data = {
-            id: $("#editId").val() || null,
-            kategori: $("#kategori").val(),
-            username: $("#username").val(),
-            password: CryptoJS.AES.encrypt(
-              $("#password").val(),
-              key
-            ).toString(),
-            pin: $("#pin").val()
-              ? CryptoJS.AES.encrypt($("#pin").val(), key).toString()
-              : "",
-            pola: $("#pola").val()
-              ? CryptoJS.AES.encrypt($("#pola").val(), key).toString()
-              : "",
-            riwayat: $("#riwayat").val(),
-          };
+        const data = {
+          id: $("#editId").val(),
+          kategori: $("#kategori").val(),
+          username: $("#username").val(),
+          password: CryptoJS.AES.encrypt($("#password").val(), key).toString(),
+          pin: $("#pin").val()
+            ? CryptoJS.AES.encrypt($("#pin").val(), key).toString()
+            : "",
+          pola: $("#pola").val()
+            ? CryptoJS.AES.encrypt($("#pola").val(), key).toString()
+            : "",
+          riwayat: $("#riwayat").val(),
+        };
 
-          const res = await fetch("/api/accounts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
+        const res = await fetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        if (res.ok) {
+          $("#myModal").modal("hide");
+          renderTable();
+          Swal.fire({
+            icon: "success",
+            title: "Berhasil",
+            text: "Data disimpan otomatis menggunakan PIN Access Anda",
+            timer: 1500,
           });
-
-          if (res.ok) {
-            $("#myModal").modal("hide");
-            renderTable();
-            Swal.fire(
-              "Sukses",
-              "Data Berhasil Terenkripsi & Disimpan",
-              "success"
-            );
-          } else {
-            Swal.fire("Gagal", "Gagal menyimpan ke server", "error");
-          }
-        } catch (err) {
-          Swal.fire("Error", "Terjadi kesalahan saat enkripsi", "error");
         }
       });
 
@@ -491,24 +482,28 @@
           ],
         });
 
-        if (formValues && formValues[0] && formValues[1]) {
+        if (formValues) {
           const res = await fetch("/api/update-pin", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               old: CryptoJS.SHA256(formValues[0]).toString(),
               new: CryptoJS.SHA256(formValues[1]).toString(),
             }),
           });
-          if (res.ok) Swal.fire("Sukses", "PIN Berhasil Diperbarui", "success");
-          else Swal.fire("Gagal", "PIN Lama Salah", "error");
+          if (res.ok) {
+            sessionKey = formValues[1]; // Update key lokal
+            sessionStorage.setItem("vault_key", sessionKey);
+            Swal.fire("Sukses", "PIN Updated", "success");
+          } else {
+            Swal.fire("Gagal", "PIN Lama Salah", "error");
+          }
         }
       }
 
       async function updateSecretKey() {
         Swal.fire(
-          "Informasi",
-          "Untuk merubah Secret Key seluruh data, Anda harus mengedit data satu per satu dan menyimpannya dengan Key baru.",
+          "Info",
+          "Fitur ini dinonaktifkan karena sistem sekarang menggunakan PIN Login sebagai kunci enkripsi otomatis.",
           "info"
         );
       }
