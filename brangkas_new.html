@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Vault v4</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+
+    <style>
+      :root {
+        --primary: #0d6efd;
+        --bg: #f8f9fa;
+      }
+      body {
+        background-color: var(--bg);
+        color: #333;
+        font-family: sans-serif;
+      }
+      .container {
+        background: white;
+        padding: 15px;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        margin-top: 15px;
+      }
+
+      /* Mobile Optimization */
+      @media (max-width: 576px) {
+        .container {
+          padding: 10px;
+          border-radius: 0;
+          margin-top: 0;
+        }
+        table.dataTable {
+          font-size: 0.75rem !important;
+        }
+        .btn-action {
+          padding: 2px 6px;
+          font-size: 0.7rem;
+        }
+        h3 {
+          font-size: 1.1rem;
+        }
+      }
+
+      .input-group-text {
+        background: white;
+        cursor: pointer;
+        border-left: none;
+      }
+      .form-control {
+        border-right: none;
+      }
+      .form-control:focus + .input-group-text {
+        border-color: #86b7fe;
+      }
+
+      #loginScreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loginScreen" style="display: none">
+      <div class="text-center p-4" style="max-width: 320px; width: 100%">
+        <i class="fas fa-lock text-primary mb-3" style="font-size: 2.5rem"></i>
+        <h5 class="mb-3">Akses Brankas</h5>
+        <input
+          type="password"
+          id="loginPin"
+          class="form-control text-center mb-3"
+          style="border-right: 1px solid #dee2e6"
+          placeholder="PIN Keamanan" />
+        <button class="btn btn-primary w-100" onclick="attemptLogin()">
+          MASUK
+        </button>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">
+          <i class="fas fa-shield-alt text-primary"></i> Vault
+        </h3>
+        <div>
+          <button class="btn btn-outline-dark btn-sm" onclick="settingsMenu()">
+            <i class="fas fa-cog"></i>
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="openModalAdd()">
+            <i class="fas fa-plus"></i> Akun
+          </button>
+        </div>
+      </div>
+
+      <table id="accountTable" class="table table-sm table-hover w-100">
+        <thead>
+          <tr>
+            <th>Aplikasi</th>
+            <th>User</th>
+            <th class="text-end">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <div
+      class="modal fade"
+      id="myModal"
+      tabindex="-1"
+      aria-hidden="true"
+      data-bs-backdrop="static">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="modalTitle">Data Akun</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="accountForm">
+              <input type="hidden" id="editIndex" />
+              <div class="mb-2">
+                <label class="small fw-bold">Kategori/App</label>
+                <input
+                  type="text"
+                  id="kategori"
+                  class="form-control form-control-sm"
+                  style="border-right: 1px solid #dee2e6"
+                  required />
+              </div>
+              <div class="mb-2">
+                <label class="small fw-bold">User/Email</label>
+                <input
+                  type="text"
+                  id="username"
+                  class="form-control form-control-sm"
+                  style="border-right: 1px solid #dee2e6"
+                  required />
+              </div>
+
+              <div class="mb-2">
+                <label class="small fw-bold">Password</label>
+                <div class="input-group input-group-sm">
+                  <input
+                    type="password"
+                    id="password"
+                    class="form-control"
+                    required />
+                  <span
+                    class="input-group-text"
+                    onclick="toggleView('password')"
+                    ><i class="fas fa-eye" id="eye-password"></i
+                  ></span>
+                </div>
+              </div>
+
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="small fw-bold">PIN</label>
+                  <div class="input-group input-group-sm">
+                    <input type="password" id="pin" class="form-control" />
+                    <span class="input-group-text" onclick="toggleView('pin')"
+                      ><i class="fas fa-eye" id="eye-pin"></i
+                    ></span>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="small fw-bold">Pola</label>
+                  <div class="input-group input-group-sm">
+                    <input type="password" id="pola" class="form-control" />
+                    <span class="input-group-text" onclick="toggleView('pola')"
+                      ><i class="fas fa-eye" id="eye-pola"></i
+                    ></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="small fw-bold">Catatan</label>
+                <textarea
+                  id="riwayat"
+                  class="form-control form-control-sm"
+                  style="border-right: 1px solid #dee2e6"
+                  rows="2"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 fw-bold">
+                SIMPAN & ENKRIPSI
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+    <script>
+      let MASTER_KEY = localStorage.getItem("vault_master_key") || "admin123";
+      let LOGIN_PIN = localStorage.getItem("vault_login_pin") || "123456";
+      let table;
+
+      // Check Session on Load
+      $(document).ready(function () {
+        if (sessionStorage.getItem("vault_authenticated") === "true") {
+          $("#loginScreen").hide();
+          renderTable();
+        } else {
+          $("#loginScreen").show();
+        }
+      });
+
+      function attemptLogin() {
+        if ($("#loginPin").val() === LOGIN_PIN) {
+          sessionStorage.setItem("vault_authenticated", "true");
+          $("#loginScreen").fadeOut();
+          renderTable();
+        } else {
+          Swal.fire("Gagal", "PIN Salah!", "error");
+        }
+      }
+
+      async function askKey() {
+        $("#myModal").modal("hide");
+        const { value: key } = await Swal.fire({
+          title: "Kunci Rahasia",
+          input: "password",
+          inputPlaceholder: "Masukkan Secret Key",
+          showCancelButton: true,
+          confirmButtonText: "Verifikasi",
+        });
+        if (key === MASTER_KEY) return key;
+        if (key) Swal.fire("Error", "Kunci Salah!", "error");
+        return null;
+      }
+
+      function toggleView(id) {
+        const input = document.getElementById(id);
+        const icon = document.getElementById("eye-" + id);
+        input.type = input.type === "password" ? "text" : "password";
+        icon.classList.toggle("fa-eye");
+        icon.classList.toggle("fa-eye-slash");
+      }
+
+      function renderTable() {
+        const data = JSON.parse(localStorage.getItem("vault_v4")) || [];
+        if ($.fn.DataTable.isDataTable("#accountTable")) table.destroy();
+
+        let html = "";
+        data.forEach((item, index) => {
+          html += `
+                <tr>
+                    <td class="align-middle"><b>${item.kategori}</b></td>
+                    <td class="align-middle text-muted">${item.username}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-warning btn-action" onclick="handleAction(${index}, 'edit')"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="handleAction(${index}, 'delete')"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+        $("#tableBody").html(html);
+        table = $("#accountTable").DataTable({
+          responsive: true,
+          dom: "ftp", // Hanya search, table, pagination (lebih ringkas)
+          language: { search: "" },
+        });
+        $(".dataTables_filter input")
+          .addClass("form-control form-control-sm")
+          .attr("placeholder", "Cari...");
+      }
+
+      async function handleAction(index, type) {
+        const key = await askKey();
+        if (!key) return;
+
+        const db = JSON.parse(localStorage.getItem("vault_v4"));
+        const item = db[index];
+
+        if (type === "edit") {
+          try {
+            $("#editIndex").val(index);
+            $("#kategori").val(item.kategori);
+            $("#username").val(item.username);
+            $("#password").val(
+              CryptoJS.AES.decrypt(item.password, key).toString(
+                CryptoJS.enc.Utf8
+              )
+            );
+            $("#pin").val(
+              item.pin
+                ? CryptoJS.AES.decrypt(item.pin, key).toString(
+                    CryptoJS.enc.Utf8
+                  )
+                : ""
+            );
+            $("#pola").val(
+              item.pola
+                ? CryptoJS.AES.decrypt(item.pola, key).toString(
+                    CryptoJS.enc.Utf8
+                  )
+                : ""
+            );
+            $("#riwayat").val(item.riwayat);
+            $("#modalTitle").text("Update Akun");
+            $("#myModal").modal("show");
+          } catch (e) {
+            Swal.fire("Error", "Gagal dekripsi data!", "error");
+          }
+        } else if (type === "delete") {
+          const res = await Swal.fire({
+            title: "Hapus?",
+            icon: "warning",
+            showCancelButton: true,
+          });
+          if (res.isConfirmed) {
+            db.splice(index, 1);
+            localStorage.setItem("vault_v4", JSON.stringify(db));
+            renderTable();
+          }
+        }
+      }
+
+      $("#accountForm").on("submit", async function (e) {
+        e.preventDefault();
+        const key = await askKey();
+        if (!key) return;
+
+        const index = $("#editIndex").val();
+        const dataBaru = {
+          kategori: $("#kategori").val(),
+          username: $("#username").val(),
+          password: CryptoJS.AES.encrypt($("#password").val(), key).toString(),
+          pin: $("#pin").val()
+            ? CryptoJS.AES.encrypt($("#pin").val(), key).toString()
+            : "",
+          pola: $("#pola").val()
+            ? CryptoJS.AES.encrypt($("#pola").val(), key).toString()
+            : "",
+          riwayat: $("#riwayat").val(),
+        };
+
+        let db = JSON.parse(localStorage.getItem("vault_v4")) || [];
+        if (index === "") db.push(dataBaru);
+        else db[index] = dataBaru;
+
+        localStorage.setItem("vault_v4", JSON.stringify(db));
+        $("#myModal").modal("hide");
+        renderTable();
+        Swal.fire("Sukses", "Data tersimpan", "success");
+      });
+
+      function openModalAdd() {
+        $("#accountForm")[0].reset();
+        $("#editIndex").val("");
+        $("#modalTitle").text("Akun Baru");
+        $("#myModal").modal("show");
+      }
+
+      async function settingsMenu() {
+        const { value: action } = await Swal.fire({
+          title: "Opsi",
+          input: "select",
+          inputOptions: {
+            pin: "Ubah PIN App",
+            key: "Ubah Secret Key",
+            logout: "Keluar",
+          },
+          showCancelButton: true,
+        });
+
+        if (action === "logout") {
+          sessionStorage.removeItem("vault_authenticated");
+          location.reload();
+        } else if (action === "pin" || action === "key") {
+          const val = await Swal.fire({
+            title: "Masukkan Nilai Baru",
+            input: "text",
+          });
+          if (val.value) {
+            if (action === "pin") {
+              localStorage.setItem("vault_login_pin", val.value);
+              LOGIN_PIN = val.value;
+            } else {
+              localStorage.setItem("vault_master_key", val.value);
+              MASTER_KEY = val.value;
+            }
+            Swal.fire("Berhasil", "Data diubah", "success");
+          }
+        }
+      }
+    </script>
+  </body>
+</html>
