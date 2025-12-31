@@ -34,8 +34,7 @@
         border-radius: 15px;
         border: 1px solid #333;
       }
-      .form-control,
-      .form-select {
+      .form-control {
         background: #2d2d2d !important;
         border: 1px solid #444 !important;
         color: #fff !important;
@@ -84,22 +83,13 @@
         background: #252525 !important;
         border: none;
         border-bottom: 2px solid #0d6efd;
-        border-radius: 0;
         color: #0dcaf0 !important;
-      }
-      @media (max-width: 576px) {
-        .action-col {
-          display: none;
-        }
-        .dataTables_length,
-        .dataTables_info {
-          display: none !important;
-        }
       }
     </style>
   </head>
 
   <body>
+    <!-- LOGIN -->
     <div id="loginOverlay">
       <div class="login-card">
         <i class="fas fa-fingerprint fa-3x text-primary mb-3"></i>
@@ -110,18 +100,19 @@
           class="form-control pin-input-modern text-center mb-4"
           maxlength="6"
           placeholder="******" />
-        <button class="btn btn-primary w-100 rounded-pill" onclick="checkPin()">
+        <button class="btn btn-primary w-100" onclick="checkPin()">
           VERIFIKASI
         </button>
       </div>
     </div>
 
+    <!-- MAIN -->
     <div id="mainApp" style="display: none">
       <div class="container">
         <div class="d-flex justify-content-between mb-3">
           <h4><i class="fas fa-vault text-warning"></i> Brankas Cloud</h4>
           <button class="btn btn-primary btn-sm" onclick="openModalAdd()">
-            <i class="fas fa-plus"></i> Baru
+            + Baru
           </button>
         </div>
 
@@ -132,7 +123,7 @@
             <tr>
               <th>Kategori</th>
               <th>Username</th>
-              <th class="text-end action-col">Aksi</th>
+              <th class="text-end">Aksi</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -140,11 +131,12 @@
       </div>
     </div>
 
+    <!-- MODAL FORM -->
     <div class="modal fade" id="myModal" data-bs-backdrop="static">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header border-secondary">
-            <h5 id="modalTitle">Form Akun</h5>
+          <div class="modal-header">
+            <h5>Form Akun</h5>
             <button
               class="btn-close btn-close-white"
               data-bs-dismiss="modal"></button>
@@ -175,20 +167,6 @@
                   ></span>
                 </div>
               </div>
-              <div class="row">
-                <div class="col-6">
-                  <label>PIN</label>
-                  <input id="pin" type="password" class="form-control" />
-                </div>
-                <div class="col-6">
-                  <label>Pola</label>
-                  <input id="pola" type="password" class="form-control" />
-                </div>
-              </div>
-              <div class="mb-3">
-                <label>Catatan</label
-                ><textarea id="riwayat" class="form-control"></textarea>
-              </div>
               <button class="btn btn-success w-100">SIMPAN</button>
             </form>
           </div>
@@ -200,12 +178,12 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
     <script>
-      let VAULT = { auth: false, key: null };
+      let VAULT = { key: null };
+      let PENDING_SAVE = false;
 
       function toggleView(id) {
         const i = document.getElementById(id);
@@ -213,47 +191,27 @@
       }
 
       function checkPin() {
-        const pin = $("#pinInput").val().trim();
-        if (!pin) return Swal.fire("Error", "PIN wajib diisi", "error");
-        if (pin !== "123456") return Swal.fire("Error", "PIN Salah", "error");
-        VAULT.auth = true;
+        if ($("#pinInput").val() !== "123456")
+          return Swal.fire("Error", "PIN Salah", "error");
         $("#loginOverlay").fadeOut();
         $("#mainApp").show();
         renderTable();
       }
 
-      /* =======================
-   FIX UTAMA ADA DI SINI
-   ======================= */
+      /* === SECRET KEY PROMPT (STABIL) === */
       async function askSecret() {
         if (VAULT.key) return VAULT.key;
 
-        // Tutup modal bootstrap dengan aman (tunggu animasi selesai)
-        if ($(".modal.show").length) {
-          await new Promise((resolve) => {
-            $(".modal.show").one("hidden.bs.modal", resolve).modal("hide");
-          });
-        }
-
         const { value } = await Swal.fire({
           title: "Otorisasi",
-          html: `<input id="secretKey" type="password"
-          class="swal2-input swal-mini-input"
-          placeholder="Secret Key"
-          autocomplete="new-password">`,
+          html: `<input id="secretKey" type="password" class="swal2-input swal-mini-input" placeholder="Secret Key">`,
           showCancelButton: true,
           allowOutsideClick: false,
-          didOpen: () => {
-            setTimeout(() => {
-              document.getElementById("secretKey").focus();
-            }, 100);
-          },
+          didOpen: () =>
+            setTimeout(() => document.getElementById("secretKey").focus(), 100),
           preConfirm: () => {
             const v = document.getElementById("secretKey").value.trim();
-            if (!v) {
-              Swal.showValidationMessage("Secret Key wajib diisi");
-              return false;
-            }
+            if (!v) Swal.showValidationMessage("Wajib diisi");
             return v;
           },
         });
@@ -263,21 +221,57 @@
         return value;
       }
 
+      /* === FORM SUBMIT === */
+      $("#accountForm").on("submit", function (e) {
+        e.preventDefault();
+        PENDING_SAVE = true;
+        $("#myModal").modal("hide");
+      });
+
+      /* === SETELAH MODAL TERTUTUP === */
+      $("#myModal").on("hidden.bs.modal", async function () {
+        if (!PENDING_SAVE) return;
+        PENDING_SAVE = false;
+
+        const key = await askSecret();
+        if (!key) return;
+
+        const data = JSON.parse(localStorage.getItem("vault_data") || "[]");
+        const enc = (v) => CryptoJS.AES.encrypt(v, key).toString();
+
+        const obj = {
+          kategori: $("#kategori").val(),
+          username: $("#username").val(),
+          password: enc($("#password").val()),
+        };
+
+        const id = $("#editId").val();
+        if (id === "") data.push(obj);
+        else data[id] = obj;
+
+        localStorage.setItem("vault_data", JSON.stringify(data));
+        renderTable();
+        Swal.fire("Sukses", "Data tersimpan", "success");
+      });
+
+      /* === TABLE === */
       function renderTable() {
         const data = JSON.parse(localStorage.getItem("vault_data") || "[]");
-        let html = "";
-        data.forEach((x, i) => {
-          html += `<tr>
+        $("#tableBody").html(
+          data
+            .map(
+              (x, i) => `
+    <tr>
       <td>${x.kategori}</td>
       <td>${x.username}</td>
-      <td class="text-end action-col">
+      <td class="text-end">
         <button class="btn btn-info btn-sm" onclick="view(${i})"><i class="fa fa-eye"></i></button>
         <button class="btn btn-warning btn-sm" onclick="edit(${i})"><i class="fa fa-edit"></i></button>
-        <button class="btn btn-danger btn-sm" onclick="del(${i})"><i class="fa fa-trash"></i></button>
       </td>
-    </tr>`;
-        });
-        $("#tableBody").html(html);
+    </tr>`
+            )
+            .join("")
+        );
         if ($.fn.DataTable.isDataTable("#accountTable"))
           $("#accountTable").DataTable().destroy();
         $("#accountTable").DataTable({ responsive: true, lengthChange: false });
@@ -288,15 +282,10 @@
         if (!key) return;
         const d = JSON.parse(localStorage.getItem("vault_data"))[i];
         try {
-          const pass = CryptoJS.AES.decrypt(d.password, key).toString(
+          const p = CryptoJS.AES.decrypt(d.password, key).toString(
             CryptoJS.enc.Utf8
           );
-          if (!pass) throw 0;
-          Swal.fire(
-            "Detail",
-            `<b>${d.username}</b><br>Password: ${pass}`,
-            "info"
-          );
+          Swal.fire("Detail", `<b>${d.username}</b><br>${p}`, "info");
         } catch {
           VAULT.key = null;
           Swal.fire("Error", "Secret Key Salah", "error");
@@ -315,36 +304,6 @@
         );
         $("#myModal").modal("show");
       }
-
-      async function del(i) {
-        const ok = await Swal.fire({ title: "Hapus?", showCancelButton: true });
-        if (ok.isConfirmed) {
-          const d = JSON.parse(localStorage.getItem("vault_data"));
-          d.splice(i, 1);
-          localStorage.setItem("vault_data", JSON.stringify(d));
-          renderTable();
-        }
-      }
-
-      $("#accountForm").on("submit", async function (e) {
-        e.preventDefault();
-        const key = await askSecret();
-        if (!key) return;
-        const data = JSON.parse(localStorage.getItem("vault_data") || "[]");
-        const enc = (v) => CryptoJS.AES.encrypt(v, key).toString();
-        const obj = {
-          kategori: $("#kategori").val(),
-          username: $("#username").val(),
-          password: enc($("#password").val()),
-        };
-        const id = $("#editId").val();
-        if (id === "") data.push(obj);
-        else data[id] = obj;
-        localStorage.setItem("vault_data", JSON.stringify(data));
-        $("#myModal").modal("hide");
-        renderTable();
-        Swal.fire("Sukses", "Data tersimpan", "success");
-      });
 
       function openModalAdd() {
         $("#editId").val("");
